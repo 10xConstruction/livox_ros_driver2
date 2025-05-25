@@ -102,6 +102,16 @@ bool LivoxLidarConfigParser::ParseUserConfigs(const rapidjson::Document &doc,
                   << IpNumToString(user_config.handle) << std::endl;
       }
     }
+    if (!config.HasMember("imu_frame")) {
+      user_config.imu_frame = "livox_imu_frame";
+    } else {
+      user_config.imu_frame = std::string(config["imu_frame"].GetString());
+    }
+    if (!config.HasMember("pcl_frame")) {
+      user_config.pcl_frame = "livox_pointcloud_frame";
+    } else {
+      user_config.pcl_frame = std::string(config["pcl_frame"].GetString());
+    }
     user_config.set_bits = 0;
     user_config.get_bits = 0;
 

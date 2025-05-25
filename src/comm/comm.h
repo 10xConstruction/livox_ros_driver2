@@ -267,6 +267,8 @@ typedef struct {
   ExtParameter extrinsic_param;
   volatile uint32_t set_bits;
   volatile uint32_t get_bits;
+  std::string imu_frame;
+  std::string pcl_frame;
 } UserLivoxLidarConfig;
 
 /** Lidar data source info abstract */

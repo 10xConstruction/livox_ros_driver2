@@ -72,11 +72,9 @@ class DriverNode;
 class Lddc final {
  public:
 #ifdef BUILDING_ROS1
-  Lddc(int format, int multi_topic, int data_src, int output_type, double frq,
-      std::string &frame_id, bool lidar_bag, bool imu_bag);
+  Lddc(int format, int multi_topic, int data_src, int output_type, double frq, bool lidar_bag, bool imu_bag);
 #elif defined BUILDING_ROS2
-  Lddc(int format, int multi_topic, int data_src, int output_type, double frq,
-      std::string &frame_id);
+  Lddc(int format, int multi_topic, int data_src, int output_type, double frq);
 #endif
   ~Lddc();
 
@@ -100,11 +98,11 @@ class Lddc final {
   void PollingLidarPointCloudData(uint8_t index, LidarDevice *lidar);
   void PollingLidarImuData(uint8_t index, LidarDevice *lidar);
 
-  void PublishPointcloud2(LidarDataQueue *queue, uint8_t index);
-  void PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index);
-  void PublishPclMsg(LidarDataQueue *queue, uint8_t index);
+  void PublishPointcloud2(LidarDataQueue *queue, uint8_t index, const std::string& pcl_frame);
+  void PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index, const std::string& pcl_frame);
+  void PublishPclMsg(LidarDataQueue *queue, uint8_t index, const std::string& pcl_frame);
 
-  void PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index);
+  void PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index, const std::string& imu_frame);
 
   void InitPointcloud2MsgHeader(PointCloud2& cloud);
   void InitPointcloud2Msg(const StoragePacket& pkg, PointCloud2& cloud, uint64_t& timestamp);
@@ -138,7 +136,6 @@ class Lddc final {
   uint8_t output_type_;
   double publish_frq_;
   uint32_t publish_period_ns_;
-  std::string frame_id_;
 
 #ifdef BUILDING_ROS1
   bool enable_lidar_bag_;
