@@ -35,7 +35,9 @@
         "x": 0,
         "y": 0,
         "z": 0
-      }
+      },
+      "imu_frame": "/livox/imu",
+      "pcl_frame": "/livox/pointcloud"
     }
   ]
 }

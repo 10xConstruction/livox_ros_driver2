@@ -42,13 +42,12 @@ namespace livox_ros {
 /** Lidar Data Distribute Control--------------------------------------------*/
 #ifdef BUILDING_ROS1
 Lddc::Lddc(int format, int multi_topic, int data_src, int output_type,
-    double frq, std::string &frame_id, bool lidar_bag, bool imu_bag)
+    double frq, bool lidar_bag, bool imu_bag)
     : transfer_format_(format),
       use_multi_topic_(multi_topic),
       data_src_(data_src),
       output_type_(output_type),
       publish_frq_(frq),
-      frame_id_(frame_id),
       enable_lidar_bag_(lidar_bag),
       enable_imu_bag_(imu_bag) {
   publish_period_ns_ = kNsPerSecond / publish_frq_;
@@ -62,13 +61,12 @@ Lddc::Lddc(int format, int multi_topic, int data_src, int output_type,
 }
 #elif defined BUILDING_ROS2
 Lddc::Lddc(int format, int multi_topic, int data_src, int output_type,
-           double frq, std::string &frame_id)
+           double frq)
     : transfer_format_(format),
       use_multi_topic_(multi_topic),
       data_src_(data_src),
       output_type_(output_type),
-      publish_frq_(frq),
-      frame_id_(frame_id) {
+      publish_frq_(frq) {
   publish_period_ns_ = kNsPerSecond / publish_frq_;
   lds_ = nullptr;
 #if 0
@@ -167,11 +165,11 @@ void Lddc::PollingLidarPointCloudData(uint8_t index, LidarDevice *lidar) {
 
   while (!lds_->IsRequestExit() && !QueueIsEmpty(p_queue)) {
     if (kPointCloud2Msg == transfer_format_) {
-      PublishPointcloud2(p_queue, index);
+      PublishPointcloud2(p_queue, index, lidar->livox_config.pcl_frame);
     } else if (kLivoxCustomMsg == transfer_format_) {
-      PublishCustomPointcloud(p_queue, index);
+      PublishCustomPointcloud(p_queue, index, lidar->livox_config.pcl_frame);
     } else if (kPclPxyziMsg == transfer_format_) {
-      PublishPclMsg(p_queue, index);
+      PublishPclMsg(p_queue, index, lidar->livox_config.pcl_frame);
     }
   }
 }
@@ -179,7 +177,7 @@ void Lddc::PollingLidarPointCloudData(uint8_t index, LidarDevice *lidar) {
 void Lddc::PollingLidarImuData(uint8_t index, LidarDevice *lidar) {
   LidarImuDataQueue& p_queue = lidar->imu_data;
   while (!lds_->IsRequestExit() && !p_queue.Empty()) {
-    PublishImuData(p_queue, index);
+    PublishImuData(p_queue, index, lidar->livox_config.imu_frame);
   }
 }
 
@@ -198,7 +196,7 @@ void Lddc::PrepareExit(void) {
   }
 }
 
-void Lddc::PublishPointcloud2(LidarDataQueue *queue, uint8_t index) {
+void Lddc::PublishPointcloud2(LidarDataQueue *queue, uint8_t index, const std::string& pcl_frame) {
   while(!QueueIsEmpty(queue)) {
     StoragePacket pkg;
     QueuePop(queue, &pkg);
@@ -208,13 +206,14 @@ void Lddc::PublishPointcloud2(LidarDataQueue *queue, uint8_t index) {
     }
 
     PointCloud2 cloud;
+    cloud.header.frame_id = pcl_frame;
     uint64_t timestamp = 0;
     InitPointcloud2Msg(pkg, cloud, timestamp);
     PublishPointcloud2Data(index, timestamp, cloud);
   }
 }
 
-void Lddc::PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index) {
+void Lddc::PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index, const std::string& pcl_frame) {
   while(!QueueIsEmpty(queue)) {
     StoragePacket pkg;
     QueuePop(queue, &pkg);
@@ -224,6 +223,7 @@ void Lddc::PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index) {
     }
 
     CustomMsg livox_msg;
+    livox_msg.header.frame_id = pcl_frame;
     InitCustomMsg(livox_msg, pkg, index);
     FillPointsToCustomMsg(livox_msg, pkg);
     PublishCustomPointData(livox_msg, index);
@@ -231,7 +231,7 @@ void Lddc::PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index) {
 }
 
 /* for pcl::pxyzi */
-void Lddc::PublishPclMsg(LidarDataQueue *queue, uint8_t index) {
+void Lddc::PublishPclMsg(LidarDataQueue *queue, uint8_t index, const std::string& pcl_frame) {
 #ifdef BUILDING_ROS2
   static bool first_log = true;
   if (first_log) {
@@ -251,6 +251,7 @@ void Lddc::PublishPclMsg(LidarDataQueue *queue, uint8_t index) {
     }
 
     PointCloud cloud;
+    cloud.header.frame_id = pcl_frame;
     uint64_t timestamp = 0;
     InitPclMsg(pkg, cloud, timestamp);
     FillPointsToPclMsg(pkg, cloud);
@@ -260,7 +261,6 @@ void Lddc::PublishPclMsg(LidarDataQueue *queue, uint8_t index) {
 }
 
 void Lddc::InitPointcloud2MsgHeader(PointCloud2& cloud) {
-  cloud.header.frame_id.assign(frame_id_);
   cloud.height = 1;
   cloud.width = 0;
   cloud.fields.resize(7);
@@ -352,7 +352,6 @@ void Lddc::PublishPointcloud2Data(const uint8_t index, const uint64_t timestamp,
 }
 
 void Lddc::InitCustomMsg(CustomMsg& livox_msg, const StoragePacket& pkg, uint8_t index) {
-  livox_msg.header.frame_id.assign(frame_id_);
 
 #ifdef BUILDING_ROS1
   static uint32_t msg_seq = 0;
@@ -418,7 +417,6 @@ void Lddc::PublishCustomPointData(const CustomMsg& livox_msg, const uint8_t inde
 
 void Lddc::InitPclMsg(const StoragePacket& pkg, PointCloud& cloud, uint64_t& timestamp) {
 #ifdef BUILDING_ROS1
-  cloud.header.frame_id.assign(frame_id_);
   cloud.height = 1;
   cloud.width = pkg.points_num;
 
@@ -478,8 +476,6 @@ void Lddc::PublishPclData(const uint8_t index, const uint64_t timestamp, const P
 }
 
 void Lddc::InitImuMsg(const ImuData& imu_data, ImuMsg& imu_msg, uint64_t& timestamp) {
-  imu_msg.header.frame_id = "livox_frame";
-
   timestamp = imu_data.time_stamp;
 #ifdef BUILDING_ROS1
   imu_msg.header.stamp = ros::Time(timestamp / 1000000000.0);  // to ros time stamp
@@ -495,7 +491,7 @@ void Lddc::InitImuMsg(const ImuData& imu_data, ImuMsg& imu_msg, uint64_t& timest
   imu_msg.linear_acceleration.z = imu_data.acc_z;
 }
 
-void Lddc::PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index) {
+void Lddc::PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index, const std::string& imu_frame) {
   ImuData imu_data;
   if (!imu_data_queue.Pop(imu_data)) {
     //printf("Publish imu data failed, imu data queue pop failed.\n");
@@ -505,6 +501,7 @@ void Lddc::PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index
   ImuMsg imu_msg;
   uint64_t timestamp;
   InitImuMsg(imu_data, imu_msg, timestamp);
+  imu_msg.header.frame_id = imu_frame;
 
 #ifdef BUILDING_ROS1
   PublisherPtr publisher_ptr = GetCurrentImuPublisher(index);
