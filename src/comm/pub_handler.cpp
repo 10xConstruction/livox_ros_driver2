@@ -27,11 +27,13 @@
 #include <cstdlib>
 #include <chrono>
 #include <iostream>
+#include <set>
 #include <limits>
 
 namespace livox_ros {
 
 std::atomic<bool> PubHandler::is_timestamp_sync_;
+static std::set<uint32_t> expected_handles = {1778493632, 1979820224};
 
 PubHandler &pub_handler() {
   static PubHandler handler;
@@ -99,14 +101,57 @@ void PubHandler::OnLivoxLidarPointCloudCallback(uint32_t handle, const uint8_t d
                                                 LivoxLidarEthernetPacket *data, void *client_data) {
   
   static std::map<uint32_t, int> packet_counts;
-  packet_counts[handle]++;
+  static std::map<uint32_t, std::chrono::steady_clock::time_point> last_packet_time;
+  static std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
   
-  if (packet_counts[handle] % 10000 == 1) { // Log every 100th packet
-    std::cout << "[DEBUG] Received packet #" << packet_counts[handle] 
-              << " from handle: " << handle 
-              << ", data_type: " << static_cast<int>(data->data_type)
-              << ", point_count: " << data->dot_num << std::endl;
+  auto now = std::chrono::steady_clock::now();
+  packet_counts[handle]++;
+  last_packet_time[handle] = now;
+
+  if (packet_counts[handle] % 1000 == 1) {
+    std::cout << "[HARDWARE OK] LiDAR " << IpNumToString(handle) 
+              << " packet #" << packet_counts[handle] 
+              << ", points: " << data->dot_num << std::endl;
   }
+  
+  // Check both LiDARs status every 5 seconds
+  static auto last_status_check = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::seconds>(now - last_status_check).count() >= 5) {
+    last_status_check = now;
+    
+    std::cout << "\n=== DUAL LIDAR HARDWARE STATUS ===" << std::endl;
+    
+    int active_lidars = 0;
+    for (uint32_t expected_handle : expected_handles) {
+      std::string ip = IpNumToString(expected_handle);
+      
+      if (packet_counts.find(expected_handle) != packet_counts.end()) {
+        auto duration = std::chrono::duration_cast<std::chrono::seconds>(
+          now - last_packet_time[expected_handle]).count();
+          
+        if (duration < 5) {  // Active if data within 5 seconds
+          std::cout << "✅ LiDAR " << ip << ": ACTIVE (packets: " 
+                    << packet_counts[expected_handle] << ", last: " << duration << "s ago)" << std::endl;
+          active_lidars++;
+        } else {
+          std::cout << "❌ LiDAR " << ip << ": STALLED (last data " << duration << "s ago)" << std::endl;
+        }
+      } else {
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
+        std::cout << "❌ LiDAR " << ip << ": NEVER CONNECTED (waiting " << elapsed << "s)" << std::endl;
+      }
+    }
+    
+    if (active_lidars == 2) {
+      std::cout << "🎉 BOTH LIDARS WORKING PERFECTLY!" << std::endl;
+    } else if (active_lidars == 1) {
+      std::cout << "⚠️  WARNING: ONLY 1 LIDAR ACTIVE!" << std::endl;
+    } else {
+      std::cout << "🚨 CRITICAL: NO LIDARS ACTIVE!" << std::endl;
+    }
+    std::cout << "====================================\n" << std::endl;
+  }
+
 
   PubHandler* self = (PubHandler*)client_data;
   if (!self) {

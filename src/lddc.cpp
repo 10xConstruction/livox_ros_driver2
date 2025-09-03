@@ -127,17 +127,31 @@ void Lddc::DistributePointCloudData(void) {
   distribute_call_count++;
   
   if (distribute_call_count % 100 == 1) {
-    std::cout << "[DEBUG] DistributePointCloudData called #" << distribute_call_count 
-              << ", lidar_count: " << lds_->lidar_count_ << std::endl;
+    std::cout << "[DEBUG] DistributePointCloudData called #" << distribute_call_count << std::endl;
     
-    // Check lidar states
-    for (uint32_t i = 0; i < lds_->lidar_count_; i++) {
-      LidarDevice *lidar = &lds_->lidars_[i];
-      std::cout << "[DEBUG] Lidar[" << i << "] - connect_state: " 
-                << static_cast<int>(lidar->connect_state)
-                << ", queue_size: " << QueueUsedSize(&lidar->data) << std::endl;
+    // Define your expected LiDAR handles
+    std::set<uint32_t> expected_handles = {1778493632, 1979820224}; // Your actual handles
+    
+    std::cout << "[DEBUG] Expected LiDAR Status:" << std::endl;
+    for (uint32_t expected_handle : expected_handles) {
+        // Find this LiDAR in the array
+        bool found = false;
+        for (uint32_t i = 0; i < lds_->lidar_count_; i++) {
+            LidarDevice *lidar = &lds_->lidars_[i];
+            if (lidar->handle == expected_handle && lidar->connect_state != kConnectStateOff) {
+                std::cout << "[DEBUG] ✅ " << IpNumToString(expected_handle) 
+                          << " [slot " << i << "] - state: " << static_cast<int>(lidar->connect_state)
+                          << ", queue: " << QueueUsedSize(&lidar->data) << std::endl;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            std::cout << "[DEBUG] ❌ " << IpNumToString(expected_handle) 
+                      << " - NOT CONNECTED" << std::endl;
+        }
     }
-  }
+}
   
   lds_->pcd_semaphore_.Wait();
   for (uint32_t i = 0; i < lds_->lidar_count_; i++) {
