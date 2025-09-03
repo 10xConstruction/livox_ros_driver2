@@ -130,6 +130,8 @@ bool LdsLidar::InitLivoxLidar() {
 #ifdef BUILDING_ROS2
   DisableLivoxSdkConsoleLogger();
 #endif
+  std::cout << "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" << std::endl;
+  std::cout << "[DEBUG] Starting Livox LiDAR initialization..." << std::endl;
 
   // parse user config
   LivoxLidarConfigParser parser(path_);
@@ -139,10 +141,13 @@ bool LdsLidar::InitLivoxLidar() {
   }
 
   // SDK initialization
+  std::cout << "[DEBUG] Parsed " << user_configs.size() << " lidar configurations" << std::endl;
   if (!LivoxLidarSdkInit(path_.c_str())) {
     std::cout << "Failed to init livox lidar sdk." << std::endl;
     return false;
   }
+  std::cout << "[DEBUG] Livox SDK initialized successfully" << std::endl;
+  std::cout << "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" << std::endl;
 
   // fill in lidar devices
   for (auto& config : user_configs) {

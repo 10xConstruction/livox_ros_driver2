@@ -146,6 +146,22 @@ void Lds::StorageLvxPointData(PointFrame* frame) {
 }
 
 void Lds::StoragePointData(PointFrame* frame) {
+  static auto last_debug_time = std::chrono::steady_clock::now();
+  auto now = std::chrono::steady_clock::now();
+  
+  if (std::chrono::duration_cast<std::chrono::seconds>(now - last_debug_time).count() >= 5) {
+    std::cout << "[DEBUG] Connection status check:" << std::endl;
+    for (uint32_t i = 0; i < lidar_count_; i++) {
+      if (lidars_[i].connect_state != kConnectStateOff) {
+        std::cout << "[DEBUG] Lidar[" << i << "] - Type: " << static_cast<int>(lidars_[i].lidar_type)
+                  << ", Handle: " << lidars_[i].handle 
+                  << ", State: " << static_cast<int>(lidars_[i].connect_state)
+                  << ", Queue: " << QueueUsedSize(&lidars_[i].data) << std::endl;
+      }
+    }
+    last_debug_time = now;
+  }
+
   if (frame == nullptr) {
     return;
   }

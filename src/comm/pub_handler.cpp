@@ -97,6 +97,17 @@ void PubHandler::SetPointCloudsCallback(PointCloudsCallback cb, void* client_dat
 
 void PubHandler::OnLivoxLidarPointCloudCallback(uint32_t handle, const uint8_t dev_type,
                                                 LivoxLidarEthernetPacket *data, void *client_data) {
+  
+  static std::map<uint32_t, int> packet_counts;
+  packet_counts[handle]++;
+  
+  if (packet_counts[handle] % 10000 == 1) { // Log every 100th packet
+    std::cout << "[DEBUG] Received packet #" << packet_counts[handle] 
+              << " from handle: " << handle 
+              << ", data_type: " << static_cast<int>(data->data_type)
+              << ", point_count: " << data->dot_num << std::endl;
+  }
+
   PubHandler* self = (PubHandler*)client_data;
   if (!self) {
     return;
@@ -162,6 +173,27 @@ void PubHandler::PublishPointCloud() {
 }
 
 void PubHandler::CheckTimer(uint32_t id) {
+
+  static std::map<uint32_t, std::chrono::steady_clock::time_point> last_data_time;
+  static std::map<uint32_t, bool> timeout_logged;
+  
+  auto now = std::chrono::steady_clock::now();
+  auto& process_handler = lidar_process_handlers_[id];
+  
+  if (process_handler && process_handler->GetLidarPointCloudsSize() > 0) {
+    last_data_time[id] = now;
+    timeout_logged[id] = false;
+  } else {
+    // Check for timeout (no data for 5 seconds)
+    if (last_data_time.find(id) != last_data_time.end()) {
+      auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - last_data_time[id]);
+      if (duration.count() >= 5 && !timeout_logged[id]) {
+        std::cout << "[WARNING] No data received from lidar ID " << id 
+                  << " for " << duration.count() << " seconds!" << std::endl;
+        timeout_logged[id] = true;
+      }
+    }
+  }
 
   if (PubHandler::is_timestamp_sync_.load()) { // Enable time synchronization
     auto& process_handler = lidar_process_handlers_[id];

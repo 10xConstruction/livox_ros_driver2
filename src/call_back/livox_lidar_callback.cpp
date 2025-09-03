@@ -33,6 +33,10 @@ namespace livox_ros {
 void LivoxLidarCallback::LidarInfoChangeCallback(const uint32_t handle,
                                            const LivoxLidarInfo* info,
                                            void* client_data) {
+
+  std::cout << "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC" << std::endl;
+  std::cout << "[DEBUG] LiDAR info change callback triggered for handle: " << handle 
+            << " (IP: " << IpNumToString(handle) << ")" << std::endl;
   if (client_data == nullptr) {
     std::cout << "lidar info change callback failed, client data is nullptr" << std::endl;
     return;
@@ -103,6 +107,8 @@ void LivoxLidarCallback::LidarInfoChangeCallback(const uint32_t handle,
   }
 
   std::cout << "begin to change work mode to 'Normal', handle: " << handle << std::endl;
+  std::cout << "[DEBUG] Setting work mode to Normal for handle: " << handle << std::endl;
+  std::cout << "begin to change work mode to 'Normal', handle: " << handle << std::endl;
   SetLivoxLidarWorkMode(handle, kLivoxLidarNormal, WorkModeChangedCallback, nullptr);
   EnableLivoxLidarImuData(handle, LivoxLidarCallback::EnableLivoxLidarImuDataCallback, lds_lidar);
   return;
@@ -112,10 +118,16 @@ void LivoxLidarCallback::WorkModeChangedCallback(livox_status status,
                                                  uint32_t handle,
                                                  LivoxLidarAsyncControlResponse *response,
                                                  void *client_data) {
+  
+  std::cout << "[DEBUG] Work mode callback - Handle: " << handle 
+            << ", Status: " << status << std::endl;
+
   if (status != kLivoxLidarStatusSuccess) {
     std::cout << "failed to change work mode, handle: " << handle << ", try again..."<< std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(1));
     SetLivoxLidarWorkMode(handle, kLivoxLidarNormal, WorkModeChangedCallback, nullptr);
+    std::cout << "[DEBUG] Successfully changed work mode to Normal, handle: " << handle << std::endl;
+    std::cout << "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC" << std::endl;
     return;
   }
   std::cout << "successfully change work mode, handle: " << handle << std::endl;

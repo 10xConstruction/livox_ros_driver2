@@ -31,6 +31,20 @@
 namespace livox_ros {
 
 void LidarCommonCallback::OnLidarPointClounCb(PointFrame* frame, void* client_data) {
+  static int frame_count = 0;
+  frame_count++;
+  
+  if (frame_count % 50 == 1) { // Log every 50th frame
+    std::cout << "[DEBUG] Processing point cloud frame #" << frame_count;
+    if (frame) {
+      std::cout << ", lidar_num: " << static_cast<int>(frame->lidar_num);
+      for (int i = 0; i < frame->lidar_num; i++) {
+        std::cout << ", points[" << i << "]: " << frame->lidar_point[i].points_num;
+      }
+    }
+    std::cout << std::endl;
+  }
+
   if (frame == nullptr) {
     printf("LidarPointCloudCb frame is nullptr.\n");
     return;

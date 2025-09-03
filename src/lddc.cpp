@@ -122,6 +122,22 @@ void Lddc::DistributePointCloudData(void) {
     std::cout << "DistributePointCloudData is RequestExit" << std::endl;
     return;
   }
+
+  static int distribute_call_count = 0;
+  distribute_call_count++;
+  
+  if (distribute_call_count % 100 == 1) {
+    std::cout << "[DEBUG] DistributePointCloudData called #" << distribute_call_count 
+              << ", lidar_count: " << lds_->lidar_count_ << std::endl;
+    
+    // Check lidar states
+    for (uint32_t i = 0; i < lds_->lidar_count_; i++) {
+      LidarDevice *lidar = &lds_->lidars_[i];
+      std::cout << "[DEBUG] Lidar[" << i << "] - connect_state: " 
+                << static_cast<int>(lidar->connect_state)
+                << ", queue_size: " << QueueUsedSize(&lidar->data) << std::endl;
+    }
+  }
   
   lds_->pcd_semaphore_.Wait();
   for (uint32_t i = 0; i < lds_->lidar_count_; i++) {
@@ -333,6 +349,15 @@ void Lddc::InitPointcloud2Msg(const StoragePacket& pkg, PointCloud2& cloud, uint
 }
 
 void Lddc::PublishPointcloud2Data(const uint8_t index, const uint64_t timestamp, const PointCloud2& cloud) {
+static std::map<uint8_t, int> publish_counts;
+  publish_counts[index]++;
+  
+  if (publish_counts[index] % 20 == 1) { // Log every 20th publish
+    std::cout << "[DEBUG] Publishing PointCloud2 #" << publish_counts[index] 
+              << " for lidar[" << static_cast<int>(index) << "], points: " 
+              << cloud.width << std::endl;
+  }
+
 #ifdef BUILDING_ROS1
   PublisherPtr publisher_ptr = Lddc::GetCurrentPublisher(index);
 #elif defined BUILDING_ROS2
@@ -342,6 +367,9 @@ void Lddc::PublishPointcloud2Data(const uint8_t index, const uint64_t timestamp,
 
   if (kOutputToRos == output_type_) {
     publisher_ptr->publish(cloud);
+    if (publish_counts[index] % 20 == 1) {
+      std::cout << "[DEBUG] Successfully published to ROS topic" << std::endl;
+    }
   } else {
 #ifdef BUILDING_ROS1
     if (bag_ && enable_lidar_bag_) {
