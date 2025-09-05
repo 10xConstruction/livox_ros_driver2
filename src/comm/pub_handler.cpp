@@ -92,11 +92,13 @@ void PubHandler::ClearAllLidarsExtrinsicParams() {
 void PubHandler::SetPointCloudsCallback(PointCloudsCallback cb, void* client_data) {
   pub_client_data_ = client_data;
   points_callback_ = cb;
+  std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" << std::endl;
   lidar_listen_id_ = LivoxLidarAddPointCloudObserver(OnLivoxLidarPointCloudCallback, this);
 }
 
 void PubHandler::OnLivoxLidarPointCloudCallback(uint32_t handle, const uint8_t dev_type,
                                                 LivoxLidarEthernetPacket *data, void *client_data) {
+  std::cout << "INSIDE OnLivoxLidarPointCloudCallback" << std::endl;
   PubHandler* self = (PubHandler*)client_data;
   if (!self) {
     return;
