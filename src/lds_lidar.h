@@ -53,6 +53,10 @@ class LdsLidar final : public Lds {
   bool Start();
 
   int DeInitLdsLidar(void);
+  
+  // Restart-related methods
+  void SetInitializedFlag(bool flag) { is_initialized_ = flag; }
+  bool IsInitialized() const { return is_initialized_; }
  private:
   LdsLidar(double publish_freq);
   LdsLidar(const LdsLidar &) = delete;

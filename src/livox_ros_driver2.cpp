@@ -27,6 +27,8 @@
 #include <vector>
 #include <csignal>
 #include <thread>
+#include <mutex>
+#include <atomic>
 
 #include "include/livox_ros_driver2.h"
 #include "include/ros_headers.h"
@@ -114,7 +116,8 @@ int main(int argc, char **argv) {
 namespace livox_ros
 {
 DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
-: Node("livox_driver_node", node_options)
+: Node("livox_driver_node", node_options),
+  restart_requested_(false)
 {
   DRIVER_INFO(*this, "Livox Ros Driver2 Version: %s", LIVOX_ROS_DRIVER2_VERSION_STRING);
 
@@ -157,9 +160,8 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   if (data_src == kSourceRawLidar) {
     DRIVER_INFO(*this, "Data Source is raw lidar.");
 
-    std::string user_config_path;
-    this->get_parameter("user_config_path", user_config_path);
-    DRIVER_INFO(*this, "Config file : %s", user_config_path.c_str());
+    this->get_parameter("user_config_path", user_config_path_);
+    DRIVER_INFO(*this, "Config file : %s", user_config_path_.c_str());
 
     std::string cmdline_bd_code;
     this->get_parameter("cmdline_input_bd_code", cmdline_bd_code);
@@ -167,7 +169,7 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
     LdsLidar *read_lidar = LdsLidar::GetInstance(publish_freq);
     lddc_ptr_->RegisterLds(static_cast<Lds *>(read_lidar));
 
-    if ((read_lidar->InitLdsLidar(user_config_path))) {
+    if ((read_lidar->InitLdsLidar(user_config_path_))) {
       DRIVER_INFO(*this, "Init lds lidar success!");
     } else {
       DRIVER_ERROR(*this, "Init lds lidar fail!");
@@ -178,6 +180,12 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
 
   pointclouddata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::PointCloudDataPollThread, this);
   imudata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::ImuDataPollThread, this);
+  
+  // Create restart service
+  restart_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "~/restart_lidar",
+      std::bind(&DriverNode::RestartLidarCallback, this, std::placeholders::_1, std::placeholders::_2));
+  DRIVER_INFO(*this, "LiDAR restart service created at ~/restart_lidar");
 }
 
 }  // namespace livox_ros
@@ -206,6 +214,88 @@ void DriverNode::ImuDataPollThread()
     lddc_ptr_->DistributeImuData();
     status = future_.wait_for(std::chrono::microseconds(0));
   } while (status == std::future_status::timeout);
+}
+
+void DriverNode::RestartLidarCallback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;  // Unused parameter
+  std::lock_guard<std::mutex> lock(restart_mutex_);
+  
+  DRIVER_INFO(*this, "LiDAR restart service called - initiating restart sequence");
+  
+  try {
+    // Get the LiDAR instance
+    LdsLidar *lds_lidar = dynamic_cast<LdsLidar*>(lddc_ptr_->lds_);
+    if (!lds_lidar) {
+      response->success = false;
+      response->message = "Failed to get LiDAR instance";
+      DRIVER_ERROR(*this, "%s", response->message.c_str());
+      return;
+    }
+    
+    // Check if already initialized
+    if (!lds_lidar->IsInitialized()) {
+      response->success = false;
+      response->message = "LiDAR is not initialized, cannot restart";
+      DRIVER_WARN(*this, "%s", response->message.c_str());
+      return;
+    }
+    
+    DRIVER_INFO(*this, "Step 1: Stopping LiDAR data acquisition...");
+    
+    // Step 1: Request exit to stop data processing
+    lds_lidar->RequestExit();
+    
+    // Wait for queues to be read
+    DRIVER_INFO(*this, "Step 2: Waiting for data queues to clear...");
+    int wait_count = 0;
+    while (!lds_lidar->IsAllQueueReadStop() && wait_count < 50) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      wait_count++;
+    }
+    
+    if (wait_count >= 50) {
+      DRIVER_WARN(*this, "Timeout waiting for queues to clear, forcing restart anyway");
+    }
+    
+    // Step 2: Deinitialize the LiDAR SDK
+    DRIVER_INFO(*this, "Step 3: Deinitializing LiDAR SDK...");
+    int deinit_result = lds_lidar->DeInitLdsLidar();
+    if (deinit_result != 0) {
+      response->success = false;
+      response->message = "Failed to deinitialize LiDAR SDK";
+      DRIVER_ERROR(*this, "%s", response->message.c_str());
+      return;
+    }
+    
+    // Step 3: Reset the initialized flag
+    DRIVER_INFO(*this, "Step 4: Resetting LiDAR state...");
+    lds_lidar->SetInitializedFlag(false);
+    lds_lidar->CleanRequestExit();
+    
+    // Small delay to ensure SDK is fully deinitialized
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    
+    // Step 4: Reinitialize the LiDAR
+    DRIVER_INFO(*this, "Step 5: Reinitializing LiDAR with config: %s", user_config_path_.c_str());
+    if (!lds_lidar->InitLdsLidar(user_config_path_)) {
+      response->success = false;
+      response->message = "Failed to reinitialize LiDAR after restart";
+      DRIVER_ERROR(*this, "%s", response->message.c_str());
+      return;
+    }
+    
+    DRIVER_INFO(*this, "LiDAR restart completed successfully!");
+    response->success = true;
+    response->message = "LiDAR restarted successfully";
+    
+  } catch (const std::exception& e) {
+    response->success = false;
+    response->message = std::string("Exception during LiDAR restart: ") + e.what();
+    DRIVER_ERROR(*this, "%s", response->message.c_str());
+  }
 }
 
 
