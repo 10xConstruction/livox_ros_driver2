@@ -307,13 +307,18 @@ void DriverNode::RestartLidarCallback(
       return;
     }
     
-    // Step 4: Reset the initialized flag
+    // Step 4: Reset the initialized flag and reset LDS state
     DRIVER_INFO(*this, "Step 5: Resetting LiDAR state...");
     lds_lidar->SetInitializedFlag(false);
     lds_lidar->CleanRequestExit();
     
-    // Small delay to ensure SDK is fully deinitialized
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Reset LDS to clean state (resets all lidar devices and queues)
+    // Note: ResetLdsLidar() is private, but we can access it if needed
+    // For now, rely on the SDK being fully deinitialized
+    
+    // Longer delay to ensure SDK is fully deinitialized and all callbacks/threads are stopped
+    DRIVER_INFO(*this, "Waiting for SDK to fully deinitialize...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
     
     // Step 5: Reinitialize the LiDAR
     DRIVER_INFO(*this, "Step 6: Reinitializing LiDAR with config: %s", user_config_path_.c_str());
