@@ -310,10 +310,14 @@ void DriverNode::RestartLidarCallback(
       return;
     }
     
-    // Step 4: Reset state flags
+    // Step 4: Reset state flags and reset LDS state
     DRIVER_INFO(*this, "Step 5: Resetting LiDAR state...");
     lds_lidar->SetInitializedFlag(false);
     lds_lidar->CleanRequestExit();
+    
+    // Reset all LDS state for clean restart
+    DRIVER_INFO(*this, "Resetting LDS state for restart...");
+    lds_lidar->ResetForRestart();
     
     // Wait for SDK to fully deinitialize (give it time to clean up internal threads/callbacks)
     DRIVER_INFO(*this, "Waiting for SDK to fully deinitialize...");

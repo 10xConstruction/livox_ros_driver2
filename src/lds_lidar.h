@@ -57,6 +57,7 @@ class LdsLidar final : public Lds {
   // Restart-related methods
   void SetInitializedFlag(bool flag) { is_initialized_ = flag; }
   bool IsInitialized() const { return is_initialized_; }
+  void ResetForRestart();  // Reset all state for restart
  private:
   LdsLidar(double publish_freq);
   LdsLidar(const LdsLidar &) = delete;

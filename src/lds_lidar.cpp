@@ -211,4 +211,30 @@ int LdsLidar::DeInitLdsLidar(void) {
 
 void LdsLidar::PrepareExit(void) { DeInitLdsLidar(); }
 
+void LdsLidar::ResetForRestart() {
+  // Reset cache index for all lidars before resetting LDS
+  // This ensures clean state for reinitialization
+  for (uint32_t i = 0; i < lidar_count_; i++) {
+    LidarDevice *lidar = &lidars_[i];
+    if (lidar->lidar_type != 0 && lidar->handle != 0) {
+      cache_index_.ResetIndex(lidar);
+    }
+  }
+  
+  // Reset the LDS state (clears all lidar devices and queues)
+  ResetLdsLidar();
+  
+  // Clear the path and summary info
+  path_.clear();
+  memset(&lidar_summary_info_, 0, sizeof(lidar_summary_info_));
+  
+  // Reset whitelist
+  whitelist_count_ = 0;
+  memset(broadcast_code_whitelist_, 0, sizeof(broadcast_code_whitelist_));
+  
+  // Reset flags
+  is_initialized_ = false;
+  auto_connect_mode_ = true;
+}
+
 }  // namespace livox_ros
