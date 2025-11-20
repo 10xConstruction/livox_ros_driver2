@@ -288,27 +288,29 @@ void DriverNode::RestartLidarCallback(
     DRIVER_INFO(*this, "Step 2: Requesting driver to stop processing...");
     lds_lidar->RequestExit();
     
-    // Step 3: Reset pub_handler (stop processing thread, but don't uninit SDK)
-    DRIVER_INFO(*this, "Step 3: Resetting pub_handler...");
+    // Step 3: Properly stop and cleanup pub_handler processing thread
+    DRIVER_INFO(*this, "Step 3: Stopping pub_handler processing thread...");
     pub_handler().RequestExit();
-    std::this_thread::sleep_for(std::chrono::milliseconds(500)); // Let thread stop
+    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Let thread see exit flag
     
-    // Step 4: Clear driver queues (without touching SDK)
-    DRIVER_INFO(*this, "Step 4: Clearing driver queues...");
-    // The queues will be implicitly cleared when we restart processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Step 4: Uninit pub_handler (joins and cleans up the thread)
+    DRIVER_INFO(*this, "Step 4: Cleaning up pub_handler thread...");
+    pub_handler().Uninit(); // This properly destroys the old thread
     
-    // Step 5: Clean exit flag and reset pub_handler to active state
-    DRIVER_INFO(*this, "Step 5: Resetting internal flags...");
+    // Step 5: Reset exit flags to allow restart
+    DRIVER_INFO(*this, "Step 5: Resetting driver exit flags...");
     lds_lidar->CleanRequestExit();
-    pub_handler().Init(); // Reinit pub_handler (resets is_quit_ flag)
     
-    // Step 6: Restart pub_handler processing thread
-    DRIVER_INFO(*this, "Step 6: Restarting pub_handler processing...");
-    pub_handler().SetPointCloudConfig(publish_freq_); // This creates new processing thread
+    // Step 6: Reset pub_handler quit flag (Init() is empty, doesn't do this)
+    DRIVER_INFO(*this, "Step 6: Resetting pub_handler state...");
+    pub_handler().ResetExitFlag(); // Reset the flag so new thread will run
     
-    // Step 7: Resume polling threads
-    DRIVER_INFO(*this, "Step 7: Resuming polling threads...");
+    // Step 7: Create new pub_handler processing thread
+    DRIVER_INFO(*this, "Step 7: Creating new pub_handler processing thread...");
+    pub_handler().SetPointCloudConfig(publish_freq_); // Now creates fresh thread
+    
+    // Step 8: Resume polling threads
+    DRIVER_INFO(*this, "Step 8: Resuming polling threads...");
     ResumePollingThreads();
     
     DRIVER_INFO(*this, "LiDAR driver reset completed successfully (SDK kept running)!");
