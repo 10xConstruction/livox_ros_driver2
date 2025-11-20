@@ -320,8 +320,9 @@ void DriverNode::RestartLidarCallback(
     lds_lidar->ResetForRestart();
     
     // Wait for SDK to fully deinitialize (give it time to clean up internal threads/callbacks)
+    // Longer delay to ensure SDK is completely ready for reinitialization
     DRIVER_INFO(*this, "Waiting for SDK to fully deinitialize...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
     
     // Step 5: Reinitialize exactly as constructor does
     DRIVER_INFO(*this, "Step 6: Reinitializing LiDAR with config: %s", user_config_path_.c_str());

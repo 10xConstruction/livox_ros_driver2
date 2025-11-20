@@ -82,9 +82,8 @@ bool LdsLidar::InitLdsLidar(const std::string& path_name) {
     return false;
   }
 
-  if (g_lds_ldiar == nullptr) {
-    g_lds_ldiar = this;
-  }
+  // Always set the global pointer to this instance (important for restart)
+  g_lds_ldiar = this;
 
   path_ = path_name;
   if (!InitLidars()) {
@@ -212,6 +211,9 @@ int LdsLidar::DeInitLdsLidar(void) {
 void LdsLidar::PrepareExit(void) { DeInitLdsLidar(); }
 
 void LdsLidar::ResetForRestart() {
+  // Ensure global pointer is set to this instance
+  g_lds_ldiar = this;
+  
   // Reset cache index for all lidars before resetting LDS
   // This ensures clean state for reinitialization
   for (uint32_t i = 0; i < lidar_count_; i++) {
