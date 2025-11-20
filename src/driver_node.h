@@ -79,6 +79,14 @@ class DriverNode final : public rclcpp::Node {
   std::string user_config_path_;
   std::atomic<bool> restart_requested_;
   std::mutex restart_mutex_;
+  
+  // Thread pause mechanism for safe restart
+  std::atomic<bool> polling_paused_;
+  std::condition_variable polling_pause_cv_;
+  std::mutex polling_pause_mutex_;
+  
+  void PausePollingThreads();
+  void ResumePollingThreads();
 };
 #endif
 
