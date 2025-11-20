@@ -259,10 +259,10 @@ void DriverNode::RestartLidarCallback(
   (void)request;  // Unused parameter
   std::lock_guard<std::mutex> lock(restart_mutex_);
   
-  DRIVER_INFO(*this, "LiDAR restart service called - initiating restart sequence");
+  DRIVER_INFO(*this, "LiDAR restart service called - initiating full restart sequence");
   
   try {
-    // Get the LiDAR instance (same as constructor)
+    // Get the LiDAR instance
     LdsLidar *lds_lidar = dynamic_cast<LdsLidar*>(lddc_ptr_->lds_);
     if (!lds_lidar) {
       response->success = false;
@@ -271,7 +271,7 @@ void DriverNode::RestartLidarCallback(
       return;
     }
     
-    // Check if already initialized
+    // Check if initialized
     if (!lds_lidar->IsInitialized()) {
       response->success = false;
       response->message = "LiDAR is not initialized, cannot restart";
@@ -279,60 +279,55 @@ void DriverNode::RestartLidarCallback(
       return;
     }
     
+    // Step 1: Pause polling threads to prevent data access during restart
     DRIVER_INFO(*this, "Step 1: Pausing polling threads...");
-    // Pause polling threads to prevent accessing data during restart
     PausePollingThreads();
     
+    // Step 2: Request LDS to stop data processing
     DRIVER_INFO(*this, "Step 2: Stopping LiDAR data acquisition...");
-    // Request exit to stop data processing
     lds_lidar->RequestExit();
     
-    // Wait for queues to be read
+    // Step 3: Wait for all queues to be drained
     DRIVER_INFO(*this, "Step 3: Waiting for data queues to clear...");
     int wait_count = 0;
     while (!lds_lidar->IsAllQueueReadStop() && wait_count < 50) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       wait_count++;
     }
-    
     if (wait_count >= 50) {
-      DRIVER_WARN(*this, "Timeout waiting for queues to clear, forcing restart anyway");
+      DRIVER_WARN(*this, "Timeout waiting for queues to clear, proceeding anyway");
     }
     
-    // Step 3: Deinitialize the LiDAR SDK (exactly as PrepareExit does)
-    DRIVER_INFO(*this, "Step 4: Deinitializing LiDAR SDK...");
+    // Step 4: Deinitialize SDK (also stops pub_handler and unregisters callbacks)
+    DRIVER_INFO(*this, "Step 4: Deinitializing LiDAR SDK and pub_handler...");
     int deinit_result = lds_lidar->DeInitLdsLidar();
     if (deinit_result != 0) {
-      ResumePollingThreads();  // Resume on error
+      ResumePollingThreads();
       response->success = false;
       response->message = "Failed to deinitialize LiDAR SDK";
       DRIVER_ERROR(*this, "%s", response->message.c_str());
       return;
     }
     
-    // Step 4: Reset state flags and reset LDS state
-    DRIVER_INFO(*this, "Step 5: Resetting LiDAR state...");
+    // Step 5: Reset all internal state flags
+    DRIVER_INFO(*this, "Step 5: Resetting internal state flags...");
     lds_lidar->SetInitializedFlag(false);
     lds_lidar->CleanRequestExit();
     
-    // Reset all LDS state for clean restart
-    DRIVER_INFO(*this, "Resetting LDS state for restart...");
+    // Step 6: Reset LDS state and clear pub_handler
+    DRIVER_INFO(*this, "Step 6: Resetting LDS state and pub_handler...");
     lds_lidar->ResetForRestart();
     
-    // Wait for SDK to fully deinitialize (give it time to clean up internal threads/callbacks)
-    // Longer delay to ensure SDK is completely ready for reinitialization
-    DRIVER_INFO(*this, "Waiting for SDK to fully deinitialize...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    // Step 7: Wait for SDK to fully clean up (callbacks, threads, internal state)
+    DRIVER_INFO(*this, "Step 7: Waiting for SDK to fully deinitialize...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     
-    // Step 5: Reinitialize exactly as constructor does
-    DRIVER_INFO(*this, "Step 6: Reinitializing LiDAR with config: %s", user_config_path_.c_str());
-    
-    // Get fresh instance (singleton, but ensures we have the right state)
+    // Step 8: Reinitialize LiDAR (same as constructor)
+    DRIVER_INFO(*this, "Step 8: Reinitializing LiDAR with config: %s", user_config_path_.c_str());
     LdsLidar *restart_lidar = LdsLidar::GetInstance(publish_freq_);
     
-    // Reinitialize using the same method as constructor
     if (!restart_lidar->InitLdsLidar(user_config_path_)) {
-      ResumePollingThreads();  // Resume on error
+      ResumePollingThreads();
       response->success = false;
       response->message = "Failed to reinitialize LiDAR after restart";
       DRIVER_ERROR(*this, "%s", response->message.c_str());
@@ -341,8 +336,8 @@ void DriverNode::RestartLidarCallback(
     
     DRIVER_INFO(*this, "Init lds lidar success!");
     
-    // Step 6: Resume polling threads
-    DRIVER_INFO(*this, "Step 7: Resuming polling threads...");
+    // Step 9: Resume polling threads
+    DRIVER_INFO(*this, "Step 9: Resuming polling threads...");
     ResumePollingThreads();
     
     DRIVER_INFO(*this, "LiDAR restart completed successfully!");
@@ -350,7 +345,7 @@ void DriverNode::RestartLidarCallback(
     response->message = "LiDAR restarted successfully";
     
   } catch (const std::exception& e) {
-    ResumePollingThreads();  // Resume on exception
+    ResumePollingThreads();
     response->success = false;
     response->message = std::string("Exception during LiDAR restart: ") + e.what();
     DRIVER_ERROR(*this, "%s", response->message.c_str());

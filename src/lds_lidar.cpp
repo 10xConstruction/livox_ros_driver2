@@ -201,6 +201,16 @@ int LdsLidar::DeInitLdsLidar(void) {
   }
 
   if (lidar_summary_info_.lidar_type & kLivoxLidarType) {
+    // Step 1: Request exit from pub_handler to stop processing threads
+    pub_handler().RequestExit();
+    
+    // Step 2: Give time for threads to stop
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    
+    // Step 3: Uninit pub_handler
+    pub_handler().Uninit();
+    
+    // Step 4: Deinitialize the SDK
     LivoxLidarSdkUninit();
     printf("Livox Lidar SDK Deinit completely!\n");
   }
@@ -222,6 +232,12 @@ void LdsLidar::ResetForRestart() {
       cache_index_.ResetIndex(lidar);
     }
   }
+  
+  // Clear pub_handler state (callbacks, lidar params, etc.)
+  pub_handler().ClearAllLidarsExtrinsicParams();
+  
+  // Reinitialize pub_handler for fresh state
+  pub_handler().Init();
   
   // Reset the LDS state (clears all lidar devices and queues)
   ResetLdsLidar();
