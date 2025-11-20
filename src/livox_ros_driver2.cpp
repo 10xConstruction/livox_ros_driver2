@@ -288,29 +288,24 @@ void DriverNode::RestartLidarCallback(
     DRIVER_INFO(*this, "Step 2: Requesting driver to stop processing...");
     lds_lidar->RequestExit();
     
-    // Step 3: Properly stop and cleanup pub_handler processing thread
-    DRIVER_INFO(*this, "Step 3: Stopping pub_handler processing thread...");
+    // Step 3: Properly stop and cleanup pub_handler (also removes SDK observers)
+    DRIVER_INFO(*this, "Step 3: Stopping and cleaning up pub_handler...");
     pub_handler().RequestExit();
     std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Let thread see exit flag
+    pub_handler().Uninit(); // Destroys thread AND removes SDK observers
     
-    // Step 4: Uninit pub_handler (joins and cleans up the thread)
-    DRIVER_INFO(*this, "Step 4: Cleaning up pub_handler thread...");
-    pub_handler().Uninit(); // This properly destroys the old thread
-    
-    // Step 5: Reset exit flags to allow restart
-    DRIVER_INFO(*this, "Step 5: Resetting driver exit flags...");
+    // Step 4: Reset exit flags to allow restart
+    DRIVER_INFO(*this, "Step 4: Resetting driver exit flags...");
     lds_lidar->CleanRequestExit();
+    pub_handler().ResetExitFlag(); // Reset quit flag so new thread will run
     
-    // Step 6: Reset pub_handler quit flag (Init() is empty, doesn't do this)
-    DRIVER_INFO(*this, "Step 6: Resetting pub_handler state...");
-    pub_handler().ResetExitFlag(); // Reset the flag so new thread will run
+    // Step 5: Re-register SDK callbacks and recreate processing thread
+    // This is the KEY step - it re-adds SDK observers so data flows again!
+    DRIVER_INFO(*this, "Step 5: Re-registering SDK callbacks and observers...");
+    lds_lidar->SetLidarPubHandle(); // Calls SetPointCloudsCallback + SetImuDataCallback + SetPointCloudConfig
     
-    // Step 7: Create new pub_handler processing thread
-    DRIVER_INFO(*this, "Step 7: Creating new pub_handler processing thread...");
-    pub_handler().SetPointCloudConfig(publish_freq_); // Now creates fresh thread
-    
-    // Step 8: Resume polling threads
-    DRIVER_INFO(*this, "Step 8: Resuming polling threads...");
+    // Step 6: Resume polling threads
+    DRIVER_INFO(*this, "Step 6: Resuming polling threads...");
     ResumePollingThreads();
     
     DRIVER_INFO(*this, "LiDAR driver reset completed successfully (SDK kept running)!");

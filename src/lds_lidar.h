@@ -73,7 +73,10 @@ class LdsLidar final : public Lds {
 
   void ResetLdsLidar(void);
 
-  void SetLidarPubHandle();
+ public:
+  void SetLidarPubHandle(); // Made public for driver restart
+
+ private:
 
 	// auto connect mode
 	void EnableAutoConnectMode(void) { auto_connect_mode_ = true; }
