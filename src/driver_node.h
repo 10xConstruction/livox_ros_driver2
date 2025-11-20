@@ -77,6 +77,7 @@ class DriverNode final : public rclcpp::Node {
   
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr restart_service_;
   std::string user_config_path_;
+  double publish_freq_;
   std::atomic<bool> restart_requested_;
   std::mutex restart_mutex_;
   
