@@ -260,7 +260,7 @@ void DriverNode::RestartLidarCallback(
   (void)request;  // Unused parameter
   std::lock_guard<std::mutex> lock(restart_mutex_);
   
-  DRIVER_INFO(*this, "LiDAR restart service called - performing FULL SDK-level reset");
+  DRIVER_INFO(*this, "LiDAR restart service called - resetting DRIVER state (keeping SDK active)");
   
   try {
     // Get the LiDAR instance
@@ -284,45 +284,38 @@ void DriverNode::RestartLidarCallback(
     DRIVER_INFO(*this, "Step 1: Pausing polling threads...");
     PausePollingThreads();
     
-    // Step 2: Request LDS to stop processing
+    // Step 2: Request LDS to stop processing (but keep SDK running)
     DRIVER_INFO(*this, "Step 2: Requesting driver to stop processing...");
     lds_lidar->RequestExit();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     
-    // Step 3: Complete SDK teardown (closes network sockets, destroys device manager)
-    DRIVER_INFO(*this, "Step 3: Performing full SDK deinitialization (breaking hardware connection)...");
-    int deinit_result = lds_lidar->DeInitLdsLidar();
-    if (deinit_result != 0) {
-      DRIVER_WARN(*this, "DeInitLdsLidar returned non-zero: %d, continuing anyway...", deinit_result);
-    }
+    // Step 3: Properly stop and cleanup pub_handler (also removes SDK observers)
+    DRIVER_INFO(*this, "Step 3: Stopping and cleaning up pub_handler...");
+    pub_handler().RequestExit();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Let thread see exit flag
+    pub_handler().Uninit(); // Destroys thread AND removes SDK observers
     
-    // Step 4: Reset all driver state to clean slate
-    DRIVER_INFO(*this, "Step 4: Resetting all driver state...");
+    // Step 4: Reset exit flags to allow restart
+    DRIVER_INFO(*this, "Step 4: Resetting driver exit flags...");
     lds_lidar->CleanRequestExit();
-    lds_lidar->ResetForRestart();
+    pub_handler().ResetExitFlag(); // Reset quit flag so new thread will run
     
-    // Step 5: Reinitialize SDK from config (reopens sockets, reconnects to hardware)
-    DRIVER_INFO(*this, "Step 5: Reinitializing SDK and reconnecting to hardware...");
-    if (!lds_lidar->InitLdsLidar(user_config_path_)) {
-      ResumePollingThreads();
-      response->success = false;
-      response->message = "Failed to reinitialize LiDAR SDK after reset";
-      DRIVER_ERROR(*this, "%s", response->message.c_str());
-      return;
-    }
+    // Step 5: Re-register SDK callbacks and recreate processing thread
+    // This is the KEY step - it re-adds SDK observers so data flows again!
+    DRIVER_INFO(*this, "Step 5: Re-registering SDK callbacks and observers...");
+    lds_lidar->SetLidarPubHandle(); // Calls SetPointCloudsCallback + SetImuDataCallback + SetPointCloudConfig
     
     // Step 6: Resume polling threads
     DRIVER_INFO(*this, "Step 6: Resuming polling threads...");
     ResumePollingThreads();
     
-    DRIVER_INFO(*this, "LiDAR full SDK reset completed successfully!");
+    DRIVER_INFO(*this, "LiDAR driver reset completed successfully (SDK kept running)!");
     response->success = true;
-    response->message = "LiDAR SDK reset successfully with complete hardware reconnection";
+    response->message = "LiDAR driver reset successfully without SDK reinitialization";
     
   } catch (const std::exception& e) {
     ResumePollingThreads();
     response->success = false;
-    response->message = std::string("Exception during SDK reset: ") + e.what();
+    response->message = std::string("Exception during driver reset: ") + e.what();
     DRIVER_ERROR(*this, "%s", response->message.c_str());
   }
 }
