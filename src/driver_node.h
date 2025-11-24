@@ -74,15 +74,13 @@ class DriverNode final : public rclcpp::Node {
   std::shared_ptr<std::thread> imudata_poll_thread_;
   std::shared_future<void> future_;
   std::promise<void> exit_signal_;
-  
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr restart_service_;
   std::string user_config_path_;
   std::mutex restart_mutex_;
-  
-  // Thread pause mechanism for safe restart
   std::atomic<bool> polling_paused_;
   std::condition_variable polling_pause_cv_;
   std::mutex polling_pause_mutex_;
+  
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr restart_service_;
   
   void PausePollingThreads();
   void ResumePollingThreads();
