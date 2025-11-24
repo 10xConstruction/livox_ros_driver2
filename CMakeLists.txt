@@ -216,25 +216,6 @@ else(ROS_EDITION STREQUAL "ROS2")
   # Add ROS Version MACRO
   #---------------------------------------------------------------------------------------
   add_definitions(-DBUILDING_ROS2)
-  
-  # Auto-detect ROS2 distribution if not set
-  if(NOT DEFINED HUMBLE_ROS)
-    if(DEFINED ENV{ROS_DISTRO})
-      if($ENV{ROS_DISTRO} STREQUAL "humble")
-        set(HUMBLE_ROS "humble")
-        message(STATUS "Auto-detected ROS2 Humble")
-      elseif($ENV{ROS_DISTRO} STREQUAL "iron" OR $ENV{ROS_DISTRO} STREQUAL "rolling")
-        set(HUMBLE_ROS "humble")
-        message(STATUS "Using Humble-style build for ${ENV{ROS_DISTRO}}")
-      else()
-        message(STATUS "Using Foxy-style build for ${ENV{ROS_DISTRO}}")
-      endif()
-    else()
-      # Default to Humble if no ROS_DISTRO set
-      set(HUMBLE_ROS "humble")
-      message(STATUS "No ROS_DISTRO detected, defaulting to Humble-style build")
-    endif()
-  endif()
 
   # find dependencies
   # uncomment the following section in order to fill in
@@ -302,49 +283,27 @@ else(ROS_EDITION STREQUAL "ROS2")
   target_include_directories(${PROJECT_NAME} PRIVATE ${livox_sdk_INCLUDE_DIRS})
 
   # get include directories of custom msg headers
-  if(HUMBLE_ROS STREQUAL "humble")
-    rosidl_get_typesupport_target(cpp_typesupport_target
-    ${LIVOX_INTERFACES} "rosidl_typesupport_cpp")
-    target_link_libraries(${PROJECT_NAME} "${cpp_typesupport_target}")
-    # include file direcotry
-    target_include_directories(${PROJECT_NAME} PUBLIC
-      ${PCL_INCLUDE_DIRS}
-      ${APR_INCLUDE_DIRS}
-      ${LIVOX_LIDAR_SDK_INCLUDE_DIR}
-      3rdparty
-      src
-    )
-    # link libraries for Humble
-    target_link_libraries(${PROJECT_NAME}
-      ${LIVOX_LIDAR_SDK_LIBRARY}
-      ${PPT_LIBRARY}
-      ${Boost_LIBRARY}
-      ${PCL_LIBRARIES}
-      ${APR_LIBRARIES}
-    )
-  else()
-    set(LIVOX_INTERFACE_TARGET "${LIVOX_INTERFACES}__rosidl_typesupport_cpp")
-    add_dependencies(${PROJECT_NAME} ${LIVOX_INTERFACES})
-    get_target_property(LIVOX_INTERFACES_INCLUDE_DIRECTORIES ${LIVOX_INTERFACE_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
-    # include file direcotry
-    target_include_directories(${PROJECT_NAME} PUBLIC
-      ${PCL_INCLUDE_DIRS}
-      ${APR_INCLUDE_DIRS}
-      ${LIVOX_LIDAR_SDK_INCLUDE_DIR}
-      ${LIVOX_INTERFACES_INCLUDE_DIRECTORIES}   # for custom msgs
-      3rdparty
-      src
-    )
-    # link libraries for Foxy
-    target_link_libraries(${PROJECT_NAME}
-      ${LIVOX_LIDAR_SDK_LIBRARY}
-      ${LIVOX_INTERFACE_TARGET}   # for custom msgs
-      ${PPT_LIBRARY}
-      ${Boost_LIBRARY}
-      ${PCL_LIBRARIES}
-      ${APR_LIBRARIES}
-    )
-  endif()
+  set(LIVOX_INTERFACE_TARGET "${LIVOX_INTERFACES}__rosidl_typesupport_cpp")
+  add_dependencies(${PROJECT_NAME} ${LIVOX_INTERFACES})
+  get_target_property(LIVOX_INTERFACES_INCLUDE_DIRECTORIES ${LIVOX_INTERFACE_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+  # include file direcotry
+  target_include_directories(${PROJECT_NAME} PUBLIC
+    ${PCL_INCLUDE_DIRS}
+    ${APR_INCLUDE_DIRS}
+    ${LIVOX_LIDAR_SDK_INCLUDE_DIR}
+    ${LIVOX_INTERFACES_INCLUDE_DIRECTORIES}   # for custom msgs
+    3rdparty
+    src
+  )
+  # link libraries
+  target_link_libraries(${PROJECT_NAME}
+    ${LIVOX_LIDAR_SDK_LIBRARY}
+    ${LIVOX_INTERFACE_TARGET}   # for custom msgs
+    ${PPT_LIBRARY}
+    ${Boost_LIBRARY}
+    ${PCL_LIBRARIES}
+    ${APR_LIBRARIES}
+  )
 
   rclcpp_components_register_node(${PROJECT_NAME}
     PLUGIN "livox_ros::DriverNode"
