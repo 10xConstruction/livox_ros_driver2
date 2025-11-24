@@ -119,7 +119,6 @@ namespace livox_ros
 {
 DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
 : Node("livox_driver_node", node_options),
-  restart_requested_(false),
   polling_paused_(false)
 {
   DRIVER_INFO(*this, "Livox Ros Driver2 Version: %s", LIVOX_ROS_DRIVER2_VERSION_STRING);
@@ -154,9 +153,6 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
     publish_freq = publish_freq;
   }
 
-  // Store publish_freq for restart
-  publish_freq_ = publish_freq;
-
   future_ = exit_signal_.get_future();
 
   /** Lidar data distribute control and lidar data source set */
@@ -186,8 +182,6 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
 
   pointclouddata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::PointCloudDataPollThread, this);
   imudata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::ImuDataPollThread, this);
-  
-  // Create restart service
   restart_service_ = this->create_service<std_srvs::srv::Trigger>(
       "~/restart_lidar",
       std::bind(&DriverNode::RestartLidarCallback, this, std::placeholders::_1, std::placeholders::_2));
@@ -201,18 +195,15 @@ RCLCPP_COMPONENTS_REGISTER_NODE(livox_ros::DriverNode)
 
 #endif  // defined BUILDING_ROS2
 
-
 void DriverNode::PointCloudDataPollThread()
 {
   std::future_status status;
   std::this_thread::sleep_for(std::chrono::seconds(3));
   do {
-    // Check if polling is paused
     {
       std::unique_lock<std::mutex> lock(polling_pause_mutex_);
       polling_pause_cv_.wait(lock, [this] { return !polling_paused_.load(); });
     }
-    
     if (lddc_ptr_) {
       lddc_ptr_->DistributePointCloudData();
     }
@@ -225,12 +216,10 @@ void DriverNode::ImuDataPollThread()
   std::future_status status;
   std::this_thread::sleep_for(std::chrono::seconds(3));
   do {
-    // Check if polling is paused
     {
       std::unique_lock<std::mutex> lock(polling_pause_mutex_);
       polling_pause_cv_.wait(lock, [this] { return !polling_paused_.load(); });
     }
-    
     if (lddc_ptr_) {
       lddc_ptr_->DistributeImuData();
     }
@@ -240,15 +229,12 @@ void DriverNode::ImuDataPollThread()
 
 void DriverNode::PausePollingThreads()
 {
-  DRIVER_INFO(*this, "Pausing polling threads...");
   polling_paused_.store(true);
-  // Give threads time to finish current iteration and reach the wait
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 void DriverNode::ResumePollingThreads()
 {
-  DRIVER_INFO(*this, "Resuming polling threads...");
   polling_paused_.store(false);
   polling_pause_cv_.notify_all();
 }
@@ -257,77 +243,38 @@ void DriverNode::RestartLidarCallback(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
-  (void)request;  // Unused parameter
+  (void)request;
   std::lock_guard<std::mutex> lock(restart_mutex_);
-  
-  DRIVER_INFO(*this, "LiDAR restart service called - resetting DRIVER state (keeping SDK active)");
-  
   try {
-    // Get the LiDAR instance
     LdsLidar *lds_lidar = dynamic_cast<LdsLidar*>(lddc_ptr_->lds_);
     if (!lds_lidar) {
       response->success = false;
       response->message = "Failed to get LiDAR instance";
-      DRIVER_ERROR(*this, "%s", response->message.c_str());
       return;
     }
-    
-    // Check if initialized
     if (!lds_lidar->IsInitialized()) {
       response->success = false;
       response->message = "LiDAR is not initialized, cannot restart";
-      DRIVER_WARN(*this, "%s", response->message.c_str());
       return;
     }
-    
-    // Step 1: Pause polling threads to prevent data access during reset
-    DRIVER_INFO(*this, "Step 1: Pausing polling threads...");
     PausePollingThreads();
-    
-    // Step 2: Request LDS to stop processing (but keep SDK running)
-    DRIVER_INFO(*this, "Step 2: Requesting driver to stop processing...");
     lds_lidar->RequestExit();
-    
-    // Step 3: Properly stop and cleanup pub_handler (also removes SDK observers)
-    DRIVER_INFO(*this, "Step 3: Stopping and cleaning up pub_handler...");
     pub_handler().RequestExit();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Let thread see exit flag
-    pub_handler().Uninit(); // Destroys thread AND removes SDK observers
-    
-    // Step 4: Reset exit flags to allow restart
-    DRIVER_INFO(*this, "Step 4: Resetting driver exit flags...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    pub_handler().Uninit();
     lds_lidar->CleanRequestExit();
-    pub_handler().ResetExitFlag(); // Reset quit flag so new thread will run
-    
-    // Step 5: Re-register SDK callbacks and recreate processing thread
-    // This is the KEY step - it re-adds SDK observers so data flows again!
-    DRIVER_INFO(*this, "Step 5: Re-registering SDK callbacks and observers...");
-    lds_lidar->SetLidarPubHandle(); // Calls SetPointCloudsCallback + SetImuDataCallback + SetPointCloudConfig
-    
-    // Step 6: Resume polling threads
-    DRIVER_INFO(*this, "Step 6: Resuming polling threads...");
+    pub_handler().ResetExitFlag();
+    lds_lidar->SetLidarPubHandle();
     ResumePollingThreads();
-    
-    DRIVER_INFO(*this, "LiDAR driver reset completed successfully (SDK kept running)!");
+    DRIVER_INFO(*this, "LiDAR restarted");
     response->success = true;
-    response->message = "LiDAR driver reset successfully without SDK reinitialization";
-    
+    response->message = "LiDAR restarted successfully";
   } catch (const std::exception& e) {
     ResumePollingThreads();
     response->success = false;
-    response->message = std::string("Exception during driver reset: ") + e.what();
-    DRIVER_ERROR(*this, "%s", response->message.c_str());
+    response->message = std::string("Exception during restart: ") + e.what();
   }
 }
-
-
-
-
-
-
-
-
-
 
 
 

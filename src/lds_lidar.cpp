@@ -74,15 +74,11 @@ LdsLidar::~LdsLidar() {}
 
 void LdsLidar::ResetLdsLidar(void) { ResetLds(kSourceRawLidar); }
 
-
-
 bool LdsLidar::InitLdsLidar(const std::string& path_name) {
   if (is_initialized_) {
     printf("Lds is already inited!\n");
     return false;
   }
-
-  // Always set the global pointer to this instance (important for restart)
   g_lds_ldiar = this;
 
   path_ = path_name;
@@ -110,7 +106,6 @@ bool LdsLidar::InitLidars() {
   }
   return true;
 }
-
 
 bool LdsLidar::Start() {
   if (lidar_summary_info_.lidar_type & kLivoxLidarType) {
@@ -201,16 +196,9 @@ int LdsLidar::DeInitLdsLidar(void) {
   }
 
   if (lidar_summary_info_.lidar_type & kLivoxLidarType) {
-    // Step 1: Request exit from pub_handler to stop processing threads
     pub_handler().RequestExit();
-    
-    // Step 2: Give time for threads to stop
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    
-    // Step 3: Uninit pub_handler
     pub_handler().Uninit();
-    
-    // Step 4: Deinitialize the SDK
     LivoxLidarSdkUninit();
     printf("Livox Lidar SDK Deinit completely!\n");
   }
@@ -221,36 +209,20 @@ int LdsLidar::DeInitLdsLidar(void) {
 void LdsLidar::PrepareExit(void) { DeInitLdsLidar(); }
 
 void LdsLidar::ResetForRestart() {
-  // Ensure global pointer is set to this instance
   g_lds_ldiar = this;
-  
-  // Reset cache index for all lidars before resetting LDS
-  // This ensures clean state for reinitialization
   for (uint32_t i = 0; i < lidar_count_; i++) {
     LidarDevice *lidar = &lidars_[i];
     if (lidar->lidar_type != 0 && lidar->handle != 0) {
       cache_index_.ResetIndex(lidar);
     }
   }
-  
-  // Clear pub_handler state (callbacks, lidar params, etc.)
   pub_handler().ClearAllLidarsExtrinsicParams();
-  
-  // Reinitialize pub_handler for fresh state
   pub_handler().Init();
-  
-  // Reset the LDS state (clears all lidar devices and queues)
   ResetLdsLidar();
-  
-  // Clear the path and summary info
   path_.clear();
   memset(&lidar_summary_info_, 0, sizeof(lidar_summary_info_));
-  
-  // Reset whitelist
   whitelist_count_ = 0;
   memset(broadcast_code_whitelist_, 0, sizeof(broadcast_code_whitelist_));
-  
-  // Reset flags
   is_initialized_ = false;
   auto_connect_mode_ = true;
 }
