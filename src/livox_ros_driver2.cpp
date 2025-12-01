@@ -230,7 +230,6 @@ void DriverNode::ImuDataPollThread()
 void DriverNode::PausePollingThreads()
 {
   polling_paused_.store(true);
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 void DriverNode::ResumePollingThreads()
@@ -259,8 +258,6 @@ void DriverNode::RestartLidarCallback(
     }
     PausePollingThreads();
     lds_lidar->RequestExit();
-    pub_handler().RequestExit();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     pub_handler().Uninit();
     lds_lidar->CleanRequestExit();
     pub_handler().ResetExitFlag();

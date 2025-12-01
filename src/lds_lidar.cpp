@@ -196,8 +196,6 @@ int LdsLidar::DeInitLdsLidar(void) {
   }
 
   if (lidar_summary_info_.lidar_type & kLivoxLidarType) {
-    pub_handler().RequestExit();
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     pub_handler().Uninit();
     LivoxLidarSdkUninit();
     printf("Livox Lidar SDK Deinit completely!\n");
