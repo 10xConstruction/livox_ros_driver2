@@ -208,23 +208,4 @@ int LdsLidar::DeInitLdsLidar(void) {
 
 void LdsLidar::PrepareExit(void) { DeInitLdsLidar(); }
 
-void LdsLidar::ResetForRestart() {
-  g_lds_ldiar = this;
-  for (uint32_t i = 0; i < lidar_count_; i++) {
-    LidarDevice *lidar = &lidars_[i];
-    if (lidar->lidar_type != 0 && lidar->handle != 0) {
-      cache_index_.ResetIndex(lidar);
-    }
-  }
-  pub_handler().ClearAllLidarsExtrinsicParams();
-  pub_handler().Init();
-  ResetLdsLidar();
-  path_.clear();
-  memset(&lidar_summary_info_, 0, sizeof(lidar_summary_info_));
-  whitelist_count_ = 0;
-  memset(broadcast_code_whitelist_, 0, sizeof(broadcast_code_whitelist_));
-  is_initialized_ = false;
-  auto_connect_mode_ = true;
-}
-
 }  // namespace livox_ros

@@ -53,9 +53,7 @@ class LdsLidar final : public Lds {
   bool Start();
   int DeInitLdsLidar(void);
   void SetLidarPubHandle();
-  void SetInitializedFlag(bool flag) { is_initialized_ = flag; }
   bool IsInitialized() const { return is_initialized_; }
-  void ResetForRestart();
   std::mutex config_mutex_;
 
  private:
