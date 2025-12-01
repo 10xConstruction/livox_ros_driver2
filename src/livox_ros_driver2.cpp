@@ -27,12 +27,16 @@
 #include <vector>
 #include <csignal>
 #include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
 
 #include "include/livox_ros_driver2.h"
 #include "include/ros_headers.h"
 #include "driver_node.h"
 #include "lddc.h"
 #include "lds_lidar.h"
+#include "comm/pub_handler.h"
 
 using namespace livox_ros;
 
@@ -114,7 +118,8 @@ int main(int argc, char **argv) {
 namespace livox_ros
 {
 DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
-: Node("livox_driver_node", node_options)
+: Node("livox_driver_node", node_options),
+  polling_paused_(false)
 {
   DRIVER_INFO(*this, "Livox Ros Driver2 Version: %s", LIVOX_ROS_DRIVER2_VERSION_STRING);
 
@@ -157,9 +162,8 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   if (data_src == kSourceRawLidar) {
     DRIVER_INFO(*this, "Data Source is raw lidar.");
 
-    std::string user_config_path;
-    this->get_parameter("user_config_path", user_config_path);
-    DRIVER_INFO(*this, "Config file : %s", user_config_path.c_str());
+    this->get_parameter("user_config_path", user_config_path_);
+    DRIVER_INFO(*this, "Config file : %s", user_config_path_.c_str());
 
     std::string cmdline_bd_code;
     this->get_parameter("cmdline_input_bd_code", cmdline_bd_code);
@@ -167,7 +171,7 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
     LdsLidar *read_lidar = LdsLidar::GetInstance(publish_freq);
     lddc_ptr_->RegisterLds(static_cast<Lds *>(read_lidar));
 
-    if ((read_lidar->InitLdsLidar(user_config_path))) {
+    if ((read_lidar->InitLdsLidar(user_config_path_))) {
       DRIVER_INFO(*this, "Init lds lidar success!");
     } else {
       DRIVER_ERROR(*this, "Init lds lidar fail!");
@@ -178,6 +182,10 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
 
   pointclouddata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::PointCloudDataPollThread, this);
   imudata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::ImuDataPollThread, this);
+  restart_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "~/restart_lidar",
+      std::bind(&DriverNode::RestartLidarCallback, this, std::placeholders::_1, std::placeholders::_2));
+  DRIVER_INFO(*this, "LiDAR restart service created at ~/restart_lidar");
 }
 
 }  // namespace livox_ros
@@ -187,13 +195,18 @@ RCLCPP_COMPONENTS_REGISTER_NODE(livox_ros::DriverNode)
 
 #endif  // defined BUILDING_ROS2
 
-
 void DriverNode::PointCloudDataPollThread()
 {
   std::future_status status;
   std::this_thread::sleep_for(std::chrono::seconds(3));
   do {
-    lddc_ptr_->DistributePointCloudData();
+    {
+      std::unique_lock<std::mutex> lock(polling_pause_mutex_);
+      polling_pause_cv_.wait(lock, [this] { return !polling_paused_.load(); });
+    }
+    if (lddc_ptr_) {
+      lddc_ptr_->DistributePointCloudData();
+    }
     status = future_.wait_for(std::chrono::microseconds(0));
   } while (status == std::future_status::timeout);
 }
@@ -203,19 +216,65 @@ void DriverNode::ImuDataPollThread()
   std::future_status status;
   std::this_thread::sleep_for(std::chrono::seconds(3));
   do {
-    lddc_ptr_->DistributeImuData();
+    {
+      std::unique_lock<std::mutex> lock(polling_pause_mutex_);
+      polling_pause_cv_.wait(lock, [this] { return !polling_paused_.load(); });
+    }
+    if (lddc_ptr_) {
+      lddc_ptr_->DistributeImuData();
+    }
     status = future_.wait_for(std::chrono::microseconds(0));
   } while (status == std::future_status::timeout);
 }
 
+void DriverNode::PausePollingThreads()
+{
+  polling_paused_.store(true);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+}
 
+void DriverNode::ResumePollingThreads()
+{
+  polling_paused_.store(false);
+  polling_pause_cv_.notify_all();
+}
 
-
-
-
-
-
-
+void DriverNode::RestartLidarCallback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  std::lock_guard<std::mutex> lock(restart_mutex_);
+  try {
+    LdsLidar *lds_lidar = dynamic_cast<LdsLidar*>(lddc_ptr_->lds_);
+    if (!lds_lidar) {
+      response->success = false;
+      response->message = "Failed to get LiDAR instance";
+      return;
+    }
+    if (!lds_lidar->IsInitialized()) {
+      response->success = false;
+      response->message = "LiDAR is not initialized, cannot restart";
+      return;
+    }
+    PausePollingThreads();
+    lds_lidar->RequestExit();
+    pub_handler().RequestExit();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    pub_handler().Uninit();
+    lds_lidar->CleanRequestExit();
+    pub_handler().ResetExitFlag();
+    lds_lidar->SetLidarPubHandle();
+    ResumePollingThreads();
+    DRIVER_INFO(*this, "LiDAR restarted");
+    response->success = true;
+    response->message = "LiDAR restarted successfully";
+  } catch (const std::exception& e) {
+    ResumePollingThreads();
+    response->success = false;
+    response->message = std::string("Exception during restart: ") + e.what();
+  }
+}
 
 
 
