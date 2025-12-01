@@ -51,11 +51,8 @@ class LdsLidar final : public Lds {
 
   bool InitLdsLidar(const std::string& path_name);
   bool Start();
-  int DeInitLdsLidar(void);
-  void SetLidarPubHandle();
-  bool IsInitialized() const { return is_initialized_; }
-  std::mutex config_mutex_;
 
+  int DeInitLdsLidar(void);
  private:
   LdsLidar(double publish_freq);
   LdsLidar(const LdsLidar &) = delete;
@@ -63,17 +60,30 @@ class LdsLidar final : public Lds {
   LdsLidar &operator=(const LdsLidar &) = delete;
 
   bool ParseSummaryConfig();
+
   bool InitLidars();
-  bool InitLivoxLidar();
+  bool InitLivoxLidar();    // for new SDK
+
   bool LivoxLidarStart();
+
   void ResetLdsLidar(void);
-  void EnableAutoConnectMode(void) { auto_connect_mode_ = true; }
+
+  void SetLidarPubHandle();
+
+	// auto connect mode
+	void EnableAutoConnectMode(void) { auto_connect_mode_ = true; }
   void DisableAutoConnectMode(void) { auto_connect_mode_ = false; }
   bool IsAutoConnectMode(void) { return auto_connect_mode_; }
+
   virtual void PrepareExit(void);
 
+ public:
+  std::mutex config_mutex_;
+
+ private:
   std::string path_;
   LidarSummaryInfo lidar_summary_info_;
+
   bool auto_connect_mode_;
   uint32_t whitelist_count_;
   volatile bool is_initialized_;

@@ -74,12 +74,17 @@ LdsLidar::~LdsLidar() {}
 
 void LdsLidar::ResetLdsLidar(void) { ResetLds(kSourceRawLidar); }
 
+
+
 bool LdsLidar::InitLdsLidar(const std::string& path_name) {
   if (is_initialized_) {
     printf("Lds is already inited!\n");
     return false;
   }
-  g_lds_ldiar = this;
+
+  if (g_lds_ldiar == nullptr) {
+    g_lds_ldiar = this;
+  }
 
   path_ = path_name;
   if (!InitLidars()) {
@@ -106,6 +111,7 @@ bool LdsLidar::InitLidars() {
   }
   return true;
 }
+
 
 bool LdsLidar::Start() {
   if (lidar_summary_info_.lidar_type & kLivoxLidarType) {
@@ -196,9 +202,6 @@ int LdsLidar::DeInitLdsLidar(void) {
   }
 
   if (lidar_summary_info_.lidar_type & kLivoxLidarType) {
-    pub_handler().RequestExit();
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    pub_handler().Uninit();
     LivoxLidarSdkUninit();
     printf("Livox Lidar SDK Deinit completely!\n");
   }

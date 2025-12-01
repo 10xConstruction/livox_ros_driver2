@@ -225,7 +225,6 @@ else(ROS_EDITION STREQUAL "ROS2")
   ament_auto_find_build_dependencies()
   find_package(PCL REQUIRED)
   find_package(std_msgs REQUIRED)
-  find_package(std_srvs REQUIRED)
   find_package(builtin_interfaces REQUIRED)
   find_package(rosidl_default_generators REQUIRED)
 
