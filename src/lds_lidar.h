@@ -30,6 +30,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <atomic>
 
 #include "lds.h"
 #include "comm/comm.h"
@@ -53,7 +54,7 @@ class LdsLidar final : public Lds {
   bool Start();
   int DeInitLdsLidar(void);
   void SetLidarPubHandle();
-  bool IsInitialized() const { return is_initialized_; }
+  bool IsInitialized() const { return is_initialized_.load(); }
   std::mutex config_mutex_;
 
  private:
@@ -76,7 +77,7 @@ class LdsLidar final : public Lds {
   LidarSummaryInfo lidar_summary_info_;
   bool auto_connect_mode_;
   uint32_t whitelist_count_;
-  volatile bool is_initialized_;
+  std::atomic<bool> is_initialized_;
   char broadcast_code_whitelist_[kMaxLidarCount][kBroadcastCodeSize];
 };
 
