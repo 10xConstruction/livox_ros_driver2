@@ -84,6 +84,7 @@ class PubHandler {
 
   void Uninit();
   void RequestExit();
+  void ResetExitFlag() { is_quit_.store(false); } // For driver restart
   void Init();
   void SetPointCloudConfig(const double publish_freq);
   void SetPointCloudsCallback(PointCloudsCallback cb, void* client_data);
